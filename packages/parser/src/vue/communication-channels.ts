@@ -13,8 +13,9 @@ export const findDependencyInstancesInTemplate = (template: string, name: string
   const dependencyUsagesKebabCase = Array.from(fragment.querySelectorAll(kebabize(name)));
   const result = [...dependencyUsagesCamelCase, ...dependencyUsagesKebabCase];
   if (result.length === 0 && template) {
-    const tagRegex = new RegExp(`<(${name}|${kebabize(name)})([\s>])`, 'gi');
-    while (tagRegex.exec(template) !== null) {
+    const tagRegex = new RegExp(`<(${name}|${kebabize(name)})[\s>]`, 'gi');
+    const matches = template.matchAll(tagRegex);
+    for (const _ of matches) {
       const element = fragment.ownerDocument.createElement('temp-tag');
       element.innerHTML = '';
       result.push(element);
@@ -51,9 +52,7 @@ export const isPropUsed = (template: Element, prop: Prop): boolean => {
     `${camel}`,
     `${kebab}`,
     `:${camel}.sync`,
-    `:${kebab}.sync`,
-    `${camel}.sync`,
-    `${kebab}.sync`
+    `:${kebab}.sync`
   ];
   let isUsed = false;
   propFormats.forEach((format) => {
@@ -61,9 +60,7 @@ export const isPropUsed = (template: Element, prop: Prop): boolean => {
   });
   // v-model (default and custom)
   if (!isUsed && (camel === 'model' || camel.startsWith('model'))) {
-    const vModelAttr = template.attributes.getNamedItem('v-model');
-    const vModelKebabAttr = template.attributes.getNamedItem(`v-model:${kebab}`);
-    isUsed = Boolean(vModelAttr) || Boolean(vModelKebabAttr);
+    isUsed = Boolean(template.attributes.getNamedItem('v-model')) || Boolean(template.attributes.getNamedItem(`v-model:${kebab}`));
   }
   // v-bind (object binding)
   if (!isUsed && template.attributes.getNamedItem('v-bind')) {
@@ -91,14 +88,6 @@ export const isEventUsed = (template: Element, event: Event): boolean => {
   ];
   let isUsed = false;
   eventFormat.forEach((format) => (isUsed = isUsed || Boolean(template.attributes.getNamedItem(format))));
-  // .sync modifier
-  if (!isUsed && template.attributes) {
-    const syncAttrCamel = template.attributes.getNamedItem(`:${camel}.sync`);
-    const syncAttrKebab = template.attributes.getNamedItem(`:${kebab}.sync`);
-    if (syncAttrCamel || syncAttrKebab) {
-      isUsed = true;
-    }
-  }
   // v-on (object binding)
   if (!isUsed && template.attributes.getNamedItem('v-on')) {
     isUsed = true;
@@ -107,17 +96,18 @@ export const isEventUsed = (template: Element, event: Event): boolean => {
   if (!isUsed && template.attributes.getNamedItem('$listeners')) {
     isUsed = true;
   }
-  if (!isUsed && template.innerHTML) {
-    const eventRegex = new RegExp(`@update:(${camel}|${kebab})`, 'i');
-    isUsed = eventRegex.test(template.innerHTML);
-  }
   // v-model (default and custom)
   if (!isUsed && (camel === 'update:model' || camel.startsWith('update:'))) {
-    const vModelAttr = template.attributes.getNamedItem('v-model');
-    const vModelKebabAttr = template.attributes.getNamedItem(
-      `v-model:${kebab.replace('update:', '')}`
-    );
-    isUsed = Boolean(vModelAttr) || Boolean(vModelKebabAttr);
+    isUsed = Boolean(template.attributes.getNamedItem('v-model')) || Boolean(template.attributes.getNamedItem(`v-model:${kebab.replace('update:', '')}`));
+  }
+  if (!isUsed) {
+    for (let i = 0; i < template.attributes.length; i++) {
+      const attr = template.attributes[i];
+      if (/^@update:(.+)/.test(attr.name)) {
+        isUsed = true;
+        break;
+      }
+    }
   }
   return isUsed;
 };
@@ -130,17 +120,8 @@ export const isSlotUsed = (template: Element, slot: Slot): boolean => {
     `#${camel}`,
     `#${kebab}`,
     `v-slot:${camel}`,
-    `v-slot:${kebab}`,
-    `<template #${camel}`,
-    `<template #${kebab}`,
-    `<template v-slot:${camel}`,
-    `<template v-slot:${kebab}`,
-    `<template #${camel}="`,
-    `<template #${kebab}="`,
-    `<template v-slot:${camel}="`,
-    `<template v-slot:${kebab}="`
+    `v-slot:${kebab}`
   ];
-
   let isUsed = false;
   slotFormat.forEach((format) => {
     isUsed = isUsed || Boolean(template.innerHTML && template.innerHTML.includes(format));
@@ -150,12 +131,11 @@ export const isSlotUsed = (template: Element, slot: Slot): boolean => {
     isUsed = true;
   }
   if (!isUsed && template.innerHTML) {
-    const slotRegex = new RegExp(`<slot[^>]+name=["'](${camel}|${kebab})["']`, 'i');
-    isUsed = slotRegex.test(template.innerHTML);
-  }
-  if (!isUsed && template.innerHTML) {
-    const templateSlotRegex = new RegExp(`<template\s+(#|v-slot:)(${camel}|${kebab})(\s*=\s*"{[^}]*}")?`, 'i');
-    isUsed = templateSlotRegex.test(template.innerHTML);
+    const combinedSlotRegex = new RegExp(
+      `(<slot[^>]+name=["'](${camel}|${kebab})["'])|(<template\\s+(#|v-slot:)(${camel}|${kebab})(\\s*=\\s*["'][^"']*["'])?)`,
+      'i'
+    );
+    isUsed = combinedSlotRegex.test(template.innerHTML);
   }
   return isUsed;
 };
