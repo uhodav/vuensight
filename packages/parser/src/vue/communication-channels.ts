@@ -59,6 +59,20 @@ export const isPropUsed = (template: Element, prop: Prop): boolean => {
   propFormats.forEach((format) => {
     if (!isUsed) isUsed = Boolean(template.attributes.getNamedItem(format));
   });
+  // v-model (default and custom)
+  if (!isUsed && (camel === 'model' || camel.startsWith('model'))) {
+    const vModelAttr = template.attributes.getNamedItem('v-model');
+    const vModelKebabAttr = template.attributes.getNamedItem(`v-model:${kebab}`);
+    isUsed = Boolean(vModelAttr) || Boolean(vModelKebabAttr);
+  }
+  // v-bind (object binding)
+  if (!isUsed && template.attributes.getNamedItem('v-bind')) {
+    isUsed = true;
+  }
+  // $attrs (proxying all attributes)
+  if (!isUsed && template.attributes.getNamedItem('$attrs')) {
+    isUsed = true;
+  }
   return isUsed;
 };
 
@@ -77,6 +91,7 @@ export const isEventUsed = (template: Element, event: Event): boolean => {
   ];
   let isUsed = false;
   eventFormat.forEach((format) => (isUsed = isUsed || Boolean(template.attributes.getNamedItem(format))));
+  // .sync modifier
   if (!isUsed && template.attributes) {
     const syncAttrCamel = template.attributes.getNamedItem(`:${camel}.sync`);
     const syncAttrKebab = template.attributes.getNamedItem(`:${kebab}.sync`);
@@ -84,9 +99,25 @@ export const isEventUsed = (template: Element, event: Event): boolean => {
       isUsed = true;
     }
   }
+  // v-on (object binding)
+  if (!isUsed && template.attributes.getNamedItem('v-on')) {
+    isUsed = true;
+  }
+  // $listeners (proxying all listeners)
+  if (!isUsed && template.attributes.getNamedItem('$listeners')) {
+    isUsed = true;
+  }
   if (!isUsed && template.innerHTML) {
     const eventRegex = new RegExp(`@update:(${camel}|${kebab})`, 'i');
     isUsed = eventRegex.test(template.innerHTML);
+  }
+  // v-model (default and custom)
+  if (!isUsed && (camel === 'update:model' || camel.startsWith('update:'))) {
+    const vModelAttr = template.attributes.getNamedItem('v-model');
+    const vModelKebabAttr = template.attributes.getNamedItem(
+      `v-model:${kebab.replace('update:', '')}`
+    );
+    isUsed = Boolean(vModelAttr) || Boolean(vModelKebabAttr);
   }
   return isUsed;
 };
@@ -114,6 +145,10 @@ export const isSlotUsed = (template: Element, slot: Slot): boolean => {
   slotFormat.forEach((format) => {
     isUsed = isUsed || Boolean(template.innerHTML && template.innerHTML.includes(format));
   });
+  // v-slot (object binding)
+  if (!isUsed && template.attributes && template.attributes.getNamedItem('v-slot')) {
+    isUsed = true;
+  }
   if (!isUsed && template.innerHTML) {
     const slotRegex = new RegExp(`<slot[^>]+name=["'](${camel}|${kebab})["']`, 'i');
     isUsed = slotRegex.test(template.innerHTML);
