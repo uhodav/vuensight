@@ -11,7 +11,16 @@ export const findDependencyInstancesInTemplate = (template: string, name: string
   const fragment = JSDOM.fragment(templateWithoutTemplateTags);
   const dependencyUsagesCamelCase = Array.from(fragment.querySelectorAll(name));
   const dependencyUsagesKebabCase = Array.from(fragment.querySelectorAll(kebabize(name)));
-  return [...dependencyUsagesCamelCase, ...dependencyUsagesKebabCase];
+  const result = [...dependencyUsagesCamelCase, ...dependencyUsagesKebabCase];
+  if (result.length === 0 && template) {
+    const tagRegex = new RegExp(`<(${name}|${kebabize(name)})([\s>])`, 'gi');
+    while (tagRegex.exec(template) !== null) {
+      const element = fragment.ownerDocument.createElement('temp-tag');
+      element.innerHTML = '';
+      result.push(element);
+    }
+  }
+  return result;
 };
 
 export const parseComponentFile = async (filePath: string): Promise<Partial<VueComponent> | null> => {
@@ -32,7 +41,20 @@ const formatProps = (props: PropDescriptor[]):Prop[] => {
 };
 
 export const isPropUsed = (template: Element, prop: Prop): boolean => {
-  const propFormats = [prop.name, `:${prop.name}`, `:${kebabize(prop.name)}`, kebabize(prop.name)];
+  const camel = prop.name;
+  const kebab = kebabize(prop.name);
+  const propFormats = [
+    camel,
+    kebab,
+    `:${camel}`,
+    `:${kebab}`,
+    `${camel}`,
+    `${kebab}`,
+    `:${camel}.sync`,
+    `:${kebab}.sync`,
+    `${camel}.sync`,
+    `${kebab}.sync`
+  ];
   let isUsed = false;
   propFormats.forEach((format) => {
     if (!isUsed) isUsed = Boolean(template.attributes.getNamedItem(format));
@@ -41,17 +63,65 @@ export const isPropUsed = (template: Element, prop: Prop): boolean => {
 };
 
 export const isEventUsed = (template: Element, event: Event): boolean => {
-  const eventFormat = [`@${event.name}`, `v-on:${event.name}`];
+  const camel = event.name;
+  const kebab = kebabize(event.name);
+  const eventFormat = [
+    `@${camel}`,
+    `@${kebab}`,
+    `v-on:${camel}`,
+    `v-on:${kebab}`,
+    `@update:${camel}`,
+    `@update:${kebab}`,
+    `v-on:update:${camel}`,
+    `v-on:update:${kebab}`
+  ];
   let isUsed = false;
   eventFormat.forEach((format) => (isUsed = isUsed || Boolean(template.attributes.getNamedItem(format))));
+  if (!isUsed && template.attributes) {
+    const syncAttrCamel = template.attributes.getNamedItem(`:${camel}.sync`);
+    const syncAttrKebab = template.attributes.getNamedItem(`:${kebab}.sync`);
+    if (syncAttrCamel || syncAttrKebab) {
+      isUsed = true;
+    }
+  }
+  if (!isUsed && template.innerHTML) {
+    const eventRegex = new RegExp(`@update:(${camel}|${kebab})`, 'i');
+    isUsed = eventRegex.test(template.innerHTML);
+  }
   return isUsed;
 };
 
 
 export const isSlotUsed = (template: Element, slot: Slot): boolean => {
-  const slotFormat = [`#${slot.name}`, `v-slot:${slot.name}`];
+  const camel = slot.name;
+  const kebab = kebabize(slot.name);
+  const slotFormat = [
+    `#${camel}`,
+    `#${kebab}`,
+    `v-slot:${camel}`,
+    `v-slot:${kebab}`,
+    `<template #${camel}`,
+    `<template #${kebab}`,
+    `<template v-slot:${camel}`,
+    `<template v-slot:${kebab}`,
+    `<template #${camel}="`,
+    `<template #${kebab}="`,
+    `<template v-slot:${camel}="`,
+    `<template v-slot:${kebab}="`
+  ];
+
   let isUsed = false;
-  slotFormat.forEach((format) => (isUsed = isUsed || Boolean(template.innerHTML.includes(format))));
+  slotFormat.forEach((format) => {
+    isUsed = isUsed || Boolean(template.innerHTML && template.innerHTML.includes(format));
+  });
+  if (!isUsed && template.innerHTML) {
+    const slotRegex = new RegExp(`<slot[^>]+name=["'](${camel}|${kebab})["']`, 'i');
+    isUsed = slotRegex.test(template.innerHTML);
+  }
+  if (!isUsed && template.innerHTML) {
+    const templateSlotRegex = new RegExp(`<template\s+(#|v-slot:)(${camel}|${kebab})(\s*=\s*"{[^}]*}")?`, 'i');
+    isUsed = templateSlotRegex.test(template.innerHTML);
+  }
   return isUsed;
 };
 
